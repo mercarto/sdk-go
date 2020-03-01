@@ -31,6 +31,7 @@ type Transport struct {
 	ConnOptions []nats.Option
 	NatsURL     string
 	Subject     string
+	Subscriber  Subscriber
 
 	sub *nats.Subscription
 
@@ -52,9 +53,12 @@ func New(natsURL, subject string, opts ...Option) (*Transport, error) {
 		return nil, err
 	}
 
-	err = t.connect()
-	if err != nil {
-		return nil, err
+	// the WithConn option may set an existing connection rather than the transport creating it for us
+	if t.Conn == nil {
+		err = t.connect()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	t.BindingTransport.Sender, t.BindingTransport.SenderContextDecorators = t.applyEncoding()
@@ -70,6 +74,11 @@ func (t *Transport) connect() error {
 }
 
 func (t *Transport) applyOptions(opts ...Option) error {
+	err := applyDefaultOptions(t)
+	if err != nil {
+		return err
+	}
+
 	for _, fn := range opts {
 		if err := fn(t); err != nil {
 			return err
@@ -108,7 +117,7 @@ func (t *Transport) StartReceiver(ctx context.Context) (err error) {
 		return fmt.Errorf("subject required for nats listen")
 	}
 
-	t.sub, err = t.Conn.SubscribeSync(t.Subject)
+	t.sub, err = t.Subscriber.Subscribe(t.Conn, t.Subject)
 	if err != nil {
 		return err
 	}
